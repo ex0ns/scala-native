@@ -15,7 +15,7 @@ class Inlining(implicit top: Top) extends Pass {
     insts.foreach {
       case  inst @ Let(_, Op.Call(Type.Function(_, _), Val.Global(global, _), _, _)) => {
         top.nodes.get(global) match {
-          case Some(node: Method) if !node.attrs.isExtern && node.attrs.inline == AlwaysInline => buf ++= node.insts
+          case Some(node: Method) if shouldInlineMethod(node) => buf ++= node.insts
           case _ => buf += inst
         }
       }
@@ -23,6 +23,12 @@ class Inlining(implicit top: Top) extends Pass {
     }
 
     buf.toSeq
+  }
+
+
+  private def shouldInlineMethod(method: Method) : Boolean = {
+    if(method.attrs.isExtern) return false
+    method.attrs.inline == AlwaysInline || method.name.show.contains("::init")
   }
 
 }
