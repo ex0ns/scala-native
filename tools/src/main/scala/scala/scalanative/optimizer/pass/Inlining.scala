@@ -12,10 +12,11 @@ class Inlining(implicit top: Top) extends Pass {
 
   override def onInsts(insts: Seq[Inst]): Seq[Inst] = {
     val buf = new nir.Buffer
+
     insts.foreach {
-      case  inst @ Let(_, Op.Call(Type.Function(_, _), Val.Global(global, _), _, _)) => {
+      case inst @ Let(_, Op.Call(Type.Function(_, _), Val.Global(global, _), _, _)) => {
         top.nodes.get(global) match {
-          case Some(node: Method) if shouldInlineMethod(node) => buf ++= node.insts
+          case Some(node: Method) if shouldInlineMethod(node) => buf ++= updateLabel(node.insts)
           case _ => buf += inst
         }
       }
@@ -23,6 +24,13 @@ class Inlining(implicit top: Top) extends Pass {
     }
 
     buf.toSeq
+  }
+
+  private def updateLabel(insts: Seq[Inst]) : Seq[Inst] = {
+    insts.map {
+        case Let(Local(_), op) => Let(op)
+        case inst => inst
+    }
   }
 
 
