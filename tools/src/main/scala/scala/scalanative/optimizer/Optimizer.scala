@@ -1,6 +1,8 @@
 package scala.scalanative
 package optimizer
 
+import java.io.File
+
 import scala.collection.mutable
 import nir._
 
@@ -30,7 +32,7 @@ object Optimizer {
             driver: Driver,
             assembly: Seq[Defn],
             dyns: Seq[String],
-            reporter: Reporter): Seq[Defn] = {
+            reporter: Reporter = Reporter.toDirectory(new File("/tmp/"))): Seq[Defn] = {
     import reporter._
 
     val injects    = driver.passes.filter(_.isInjectionPass)

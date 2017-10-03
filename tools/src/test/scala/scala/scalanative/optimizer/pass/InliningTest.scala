@@ -126,25 +126,35 @@ class InliningTest extends OptimizerSpec {
     val driverWithoutInlining =
       Some(Driver.empty.withPasses(Seq(MethodLowering, CopyPropagation, AccessorsInliningCheck)))
 
-    assertThrows[TestFailedException] {
+    assertThrows[Exception] {
       optimize("A$", code, driverWithoutInlining) { case (_, _, _) => () }
     }
   }
 
-  /*it should "inline tuple unapply" in {
+  it should "inline tuple pattern match" in {
     val code = """
-                 | case class Foo(x: Int, y: Int)
+                 | case class Foo(content: Int, content1: Int)
                  |
                  | object A {
                  |  def main(args: Array[String]): Unit = {
                  |    val foo = Foo(1, 3)
-                 |    val Foo(x, y) = foo
-                 |    println(x)
-                 |    println(y)
+                 |    val Foo(content, content1) = foo
+                 |    println(content)
+                 |    println(content1)
                  |  }
                  |}""".stripMargin
-    fail()
-  }*/
+
+    val driverWithoutInlining =
+      Some(Driver.empty.withPasses(Seq(MethodLowering, CopyPropagation, TupleInliningCheck)))
+
+    assertThrows[Exception] {
+      optimize("A$", code, driverWithoutInlining) { case (_, _, _) => () }
+    }
+
+    val driverWithInlining =
+      Some(Driver.empty.withPasses(Seq(MethodLowering, CopyPropagation, Inlining, TupleInliningCheck)))
+    optimize("A$", code, driverWithInlining) { case (_, _, _) => () }
+  }
 
   private class ConstructorInliningCheck extends Pass {
     override def onInst(inst: Inst): Inst = inst match {
@@ -169,7 +179,19 @@ class InliningTest extends OptimizerSpec {
     override def onInst(inst: Inst): Inst = {
       inst match {
         case Let(_, Op.Call(Type.Function(_, _), Val.Global(global, _), _, _)) =>
-          if(global.show.contains("content") || global.show.contains("contentRO") || global.show.contains("content$underscore$="))
+          if(global.show.contains("content"))
+            fail(s"Found a call to accessor ${inst.show}")
+          inst
+        case _ => inst
+      }
+    }
+  }
+
+  private class TupleInliningCheck extends Pass {
+    override def onInst(inst: Inst): Inst = {
+      inst match {
+        case Let(_, Op.Call(Type.Function(_, _), Val.Global(global, _), _, _)) =>
+          if(global.show.contains("content") || global.show.contains("Foo::init"))
             fail(s"Found a call to accessor ${inst.show}")
           inst
         case _ => inst
@@ -188,5 +210,9 @@ class InliningTest extends OptimizerSpec {
 
   private object AccessorsInliningCheck extends PassCompanion {
     override def apply(config: Config, top: Top): Pass = new AccessorsInliningCheck
+  }
+
+  private object TupleInliningCheck extends PassCompanion {
+    override def apply(config: Config, top: Top): Pass = new TupleInliningCheck
   }
 }
