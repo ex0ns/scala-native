@@ -9,7 +9,6 @@ import analysis.ClassHierarchy.Top
 class UnitSimplification extends Pass {
 
   override def onVal(value: Val): Val = {
-    println(value)
     value match {
       case v if (v.ty == Type.Unit) =>
         Val.Unit

@@ -29,7 +29,6 @@ object Reporter {
 
   /** Dump textual NIR after every pass to given directory. */
   def toDirectory(file: File): Reporter = new Reporter {
-    println(s"Reporting to file ${file.getAbsolutePath}")
     lazy val dir = VirtualDirectory.local(file)
 
     private def debug(batchDefns: Seq[Defn], suffix: String) =

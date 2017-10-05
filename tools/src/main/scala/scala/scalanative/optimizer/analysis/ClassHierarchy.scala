@@ -131,12 +131,17 @@ object ClassHierarchy {
         enter(defn.name, new Field(defn.attrs, defn.name, defn.ty))
 
       case defn: Defn.Declare =>
-        enter(defn.name,
-              new Method(defn.attrs, defn.name, defn.ty, Seq(), isConcrete = false))
+        enter(
+          defn.name,
+          new Method(defn.attrs, defn.name, defn.ty, Seq(), isConcrete = false))
 
       case defn: Defn.Define =>
         enter(defn.name,
-              new Method(defn.attrs, defn.name, defn.ty, defn.insts, isConcrete = true))
+              new Method(defn.attrs,
+                         defn.name,
+                         defn.ty,
+                         defn.insts,
+                         isConcrete = true))
 
       case defn: Defn.Struct =>
         enter(defn.name, new Struct(defn.attrs, defn.name, defn.tys))

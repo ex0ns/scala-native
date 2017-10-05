@@ -10,7 +10,7 @@ import scala.scalanative.optimizer.analysis.ClassHierarchy._
 
 class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
 
-  private val INST_TRESH = 15
+  private val INST_TRESH = 14
 
   override def onInsts(insts: Seq[Inst]): Seq[Inst] = {
     val buf = new nir.Buffer

@@ -2,8 +2,6 @@ package scala.scalanative
 package optimizer
 package pass
 
-import org.scalatest.exceptions.TestFailedException
-
 import analysis.ClassHierarchy.Top
 import nir._
 import scala.scalanative.nir.Inst.Let
@@ -83,9 +81,11 @@ class InliningTest extends OptimizerSpec {
     val driverWithoutInlining =
       Some(Driver.empty.withPasses(Seq(MethodLowering, CopyPropagation, AccessorsInliningCheck)))
 
-    assertThrows[Exception] {
+    val failure = intercept[Exception] {
       optimize("A$", code, driverWithoutInlining) { case (_, _, _) => () }
     }
+
+    assert(failure.getMessage.indexOf("Found a call to") != -1)
   }
 
   it should "inline accessor (set)" in {
@@ -102,13 +102,6 @@ class InliningTest extends OptimizerSpec {
     val driverWithInlining =
       Some(Driver.empty.withPasses(commonPasses :+ AccessorsInliningCheck))
     optimize("A$", code, driverWithInlining) { case (_, _, _) => () }
-
-    val driverWithoutInlining =
-      Some(Driver.empty.withPasses(Seq(MethodLowering, CopyPropagation, AccessorsInliningCheck)))
-
-    assertThrows[Exception] {
-      optimize("A$", code, driverWithoutInlining) { case (_, _, _) => () }
-    }
   }
 
   it should "should fail if setter is not inlined" in {
@@ -126,9 +119,11 @@ class InliningTest extends OptimizerSpec {
     val driverWithoutInlining =
       Some(Driver.empty.withPasses(Seq(MethodLowering, CopyPropagation, AccessorsInliningCheck)))
 
-    assertThrows[Exception] {
+    val failure = intercept[Exception] {
       optimize("A$", code, driverWithoutInlining) { case (_, _, _) => () }
     }
+
+    assert(failure.getMessage.indexOf("Found a call to") != -1)
   }
 
   it should "inline tuple pattern match" in {
@@ -147,9 +142,12 @@ class InliningTest extends OptimizerSpec {
     val driverWithoutInlining =
       Some(Driver.empty.withPasses(Seq(MethodLowering, CopyPropagation, TupleInliningCheck)))
 
-    assertThrows[Exception] {
+
+    val failure = intercept[Exception] {
       optimize("A$", code, driverWithoutInlining) { case (_, _, _) => () }
     }
+
+    assert(failure.getMessage.indexOf("Found a call to") != -1)
 
     val driverWithInlining =
       Some(Driver.empty.withPasses(Seq(MethodLowering, CopyPropagation, Inlining, TupleInliningCheck)))
@@ -179,8 +177,7 @@ class InliningTest extends OptimizerSpec {
     override def onInst(inst: Inst): Inst = {
       inst match {
         case Let(_, Op.Call(Type.Function(_, _), Val.Global(global, _), _, _)) =>
-          if(global.show.contains("content"))
-            fail(s"Found a call to accessor ${inst.show}")
+          if(global.show.contains("content")) fail(s"Found a call to accessor ${inst.show}")
           inst
         case _ => inst
       }
@@ -191,7 +188,7 @@ class InliningTest extends OptimizerSpec {
     override def onInst(inst: Inst): Inst = {
       inst match {
         case Let(_, Op.Call(Type.Function(_, _), Val.Global(global, _), _, _)) =>
-          if(global.show.contains("content") || global.show.contains("Foo::init"))
+          if(global.show.contains("content") || global.show.contains("Foo::"))
             fail(s"Found a call to accessor ${inst.show}")
           inst
         case _ => inst
