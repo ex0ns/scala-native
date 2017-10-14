@@ -1,8 +1,6 @@
 package scala.scalanative
 package optimizer
 
-import java.io.File
-
 import scala.collection.mutable
 import nir._
 
@@ -21,7 +19,7 @@ object Optimizer {
   }
 
   private def partition(defns: Seq[Defn]) = {
-    val batches = java.lang.Runtime.getRuntime.availableProcessors * 4
+    val batches = 1 //java.lang.Runtime.getRuntime.availableProcessors * 4
     defns.groupBy { defn =>
       Math.abs(System.identityHashCode(defn)) % batches
     }
@@ -32,7 +30,7 @@ object Optimizer {
             driver: Driver,
             assembly: Seq[Defn],
             dyns: Seq[String],
-            reporter: Reporter = Reporter.toDirectory(new File("/tmp/"))): Seq[Defn] = {
+            reporter: Reporter): Seq[Defn] = {
     import reporter._
 
     val injects    = driver.passes.filter(_.isInjectionPass)

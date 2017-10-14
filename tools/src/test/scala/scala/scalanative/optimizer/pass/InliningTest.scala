@@ -9,7 +9,7 @@ import tools._
 
 class InliningTest extends OptimizerSpec {
 
-  private val commonPasses = Seq(MethodLowering, CopyPropagation, Inlining)
+  private val commonPasses = Seq(Inlining, MethodLowering, CopyPropagation)
 
   it should "inline all occurrences of add5" in {
     val code = """
@@ -17,8 +17,10 @@ class InliningTest extends OptimizerSpec {
                          |   @inline def add5(i: Int) = i + 5
                          | }
                          | object A {
-                         |  def main(args: Array[String]): Unit =
+                         |  def main(args: Array[String]): Unit = {
                          |    println(B.add5(6))
+                         |    println(B.add5(6))
+                         |  }
                          |}""".stripMargin
     val driver =
       Some(Driver.empty.withPasses(commonPasses :+ AnnotatedInliningCheck))
