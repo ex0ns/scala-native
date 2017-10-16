@@ -156,6 +156,26 @@ class InliningTest extends OptimizerSpec {
     optimize("A$", code, driverWithInlining) { case (_, _, _) => () }
   }
 
+  it should "inline using fastOpt" in {
+    val code = """
+                 | class B {
+                 |   @inline def add5(i: Int) = {
+                 |   val five = 5 + i
+                 |    i + five - i
+                 |   }
+                 | }
+                 | object A {
+                 |  def main(args: Array[String]): Unit = {
+                 |    val a = 6
+                 |    println(new B().add5(a))
+                 |  }
+                 |}""".stripMargin
+
+    val driver =
+      Some(Driver(Config.empty))
+    optimize("A$", code, driver) { case (_, _, _) => () }
+  }
+
   private class ConstructorInliningCheck extends Pass {
     override def onInst(inst: Inst): Inst = inst match {
       case Let(_, Op.Call(Type.Function(_, _), Val.Global(global, _), _, _))  =>
