@@ -160,20 +160,29 @@ class InliningTest extends OptimizerSpec {
     val code = """
                  | class B {
                  |   @inline def add5(i: Int) = {
-                 |   val five = 5 + i
-                 |    i + five - i
+                 |     val five = 5 + i
+                 |     i + five - i
                  |   }
+                 |
+                 |   @inline def printadd5(i: Int) = {
+                 |     println(add5(i))
+                 |   }
+                 |
                  | }
                  | object A {
                  |  def main(args: Array[String]): Unit = {
                  |    val a = 6
                  |    println(new B().add5(a))
+                 |    new B().printadd5(a)
                  |  }
                  |}""".stripMargin
 
     val driver =
       Some(Driver(Config.empty))
     optimize("A$", code, driver) { case (_, _, _) => () }
+
+    val driver2 = Some(Driver.empty.withPasses(commonPasses :+ AccessorsInliningCheck))
+    optimize("A$", code, driver2) { case (_, _, _) => () }
   }
 
   private class ConstructorInliningCheck extends Pass {
