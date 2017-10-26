@@ -4,7 +4,7 @@ package pass
 
 import scala.collection.mutable
 import scala.scalanative.nir.Attr.{AlwaysInline, NoInline}
-import scala.scalanative.nir.Inst.{Jump, Label, Let, Ret}
+import scala.scalanative.nir.Inst._
 import scala.scalanative.nir._
 import scala.scalanative.optimizer.analysis.ClassHierarchy.{Method, _}
 import scala.scalanative.optimizer.analysis.ClassHierarchyExtractors.MethodRef
@@ -47,18 +47,18 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
     * Indeed, we need to remove the ret instruction and use the call's label to update its value
     *
     */
-  private def inlineGlobal(method: Option[Node], inst: Inst, buf: nir.Buffer, update: Val.Local, args: Seq[Val]): Unit = {
+  private def inlineGlobal(method: Option[Node], inst: Inst, buf: nir.Buffer, update: Val.Local, unwind: Next, args: Seq[Val]): Unit = {
     method match {
       case Some(method: Method) if shouldInlineMethod(method) =>
         val mapping = createMapping(buf, method.insts.head, args)
-        val updated = UpdateLabel(fresh, top, update, mapping).onInsts(method.insts.tail)
+        val updated = UpdateLabel(fresh, top, update, unwind, mapping).onInsts(method.insts.tail)
         buf ++= updated
       case _ => buf += inst
     }
   }
 
-  private def inlineGlobal(name: Global, inst: Inst, buf: nir.Buffer, update: Val.Local, args: Seq[Val]): Unit =
-    inlineGlobal(top.nodes.get(name), inst, buf, update, args)
+  private def inlineGlobal(name: Global, inst: Inst, buf: nir.Buffer, update: Val.Local, unwind: Next, args: Seq[Val]): Unit =
+    inlineGlobal(top.nodes.get(name), inst, buf, update, unwind, args)
 
   override def onInsts(insts: Seq[Inst]): Seq[Inst] = {
     val buf = new nir.Buffer
@@ -68,12 +68,12 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
     }.toMap
 
     insts.foreach {
-      case inst@Let(local, Op.Call(Type.Function(_, ret), Val.Global(name, ty), args, _)) =>
-        inlineGlobal(name, inst, buf, Val.Local(local, ret), args)
-      case inst@Let(local, Op.Call(Type.Function(_, ret), Val.Local(Local(id), ty), args, _)) =>
+      case inst@Let(local, Op.Call(Type.Function(_, ret), Val.Global(name, ty), args, unwind)) =>
+        inlineGlobal(name, inst, buf, Val.Local(local, ret), unwind, args)
+      case inst@Let(local, Op.Call(Type.Function(_, ret), Val.Local(Local(id), ty), args, unwind)) =>
         ops.get(id) match {
           case Some(Op.Method(_, MethodRef(_: Class, meth))) =>
-            inlineGlobal(Some(meth), inst, buf, Val.Local(local, ret), args)
+            inlineGlobal(Some(meth), inst, buf, Val.Local(local, ret), unwind, args)
           case _ => buf += inst
         }
       case inst =>
@@ -95,7 +95,7 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
 /**
   * Go through all instructions and update their Local value according to the map
   */
-private class UpdateLabel(ret: Val.Local, mapping: Map[Local, Local])(implicit fresh: Fresh, top: Top) extends Pass {
+private class UpdateLabel(ret: Val.Local, unwind: Next, mapping: Map[Local, Local])(implicit fresh: Fresh, top: Top) extends Pass {
 
   private val reassign = mutable.Map[Local, Local](mapping.toSeq: _*)
   private val buf = new nir.Buffer
@@ -125,6 +125,7 @@ private class UpdateLabel(ret: Val.Local, mapping: Map[Local, Local])(implicit f
     case Label(l@Local(_), params) => Label(updateLocal(l), params.map {
       case Val.Local(l@_, ty) => Val.Local(updateLocal(l), onType(ty))
     })
+    case Throw(value: Val, Next.None) if unwind != Next.None => Throw(onVal(value), unwind)
     case _ => super.onInst(inst)
   }
 
@@ -143,7 +144,8 @@ private class UpdateLabel(ret: Val.Local, mapping: Map[Local, Local])(implicit f
 }
 
 private object UpdateLabel {
-  def apply(fresh: Fresh, top: Top, ret: Val.Local, mapping: Map[Local, Local]) = new UpdateLabel(ret, mapping)(fresh, top)
+  def apply(fresh: Fresh, top: Top, ret: Val.Local, unwind: Next, mapping: Map[Local, Local]) =
+    new UpdateLabel(ret, unwind, mapping)(fresh, top)
 }
 
 object Inlining extends PassCompanion {
