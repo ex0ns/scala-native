@@ -15,7 +15,8 @@ import scala.scalanative.optimizer.analysis.ClassHierarchyExtractors.MethodRef
  */
 class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
 
-  private val INST_THRESH = 4
+  private val INST_THRESH                    = 4
+  private val calls: mutable.HashSet[Global] = mutable.HashSet()
 
   private def createMapping(buf: nir.Buffer, label: Inst, args: Seq[Val]) = {
     def argsToLocal = args.map {
@@ -61,9 +62,11 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
                            args: Seq[Val]): Unit = {
     method match {
       case Some(method: Method) if shouldInlineMethod(method) =>
+        calls.add(method.name)
         val mapping = createMapping(buf, method.insts.head, args)
         val updated = UpdateLabel(fresh, top, update, unwind, mapping).onInsts(
           method.insts.tail)
+
         buf ++= updated
       case _ => buf += inst
     }
@@ -76,6 +79,17 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
                            unwind: Next,
                            args: Seq[Val]): Unit =
     inlineGlobal(top.nodes.get(name), inst, buf, update, unwind, args)
+
+  override def onDefn(defn: Defn): Defn = {
+    defn match {
+      case defn @ Defn.Define(_, _, ty, insts) =>
+        calls.clear()
+        calls.add(defn.name)
+        super.onDefn(defn)
+      case _ =>
+        defn
+    }
+  }
 
   override def onInsts(insts: Seq[Inst]): Seq[Inst] = {
     val buf = new nir.Buffer
@@ -121,7 +135,7 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
       .contains("::init") || method.insts.size < INST_THRESH
   }
 
-  private def isRecursive(method: Method) = false
+  private def isRecursive(method: Method) = calls.contains(method.name)
 }
 
 /**
@@ -157,6 +171,12 @@ private class UpdateLabel(
   }
 
   override def onInst(inst: Inst): Inst = inst match {
+    case Let(l @ Local(_), op @ Op.Call(_, _, _, Next.None))
+        if unwind != Next.None =>
+      onOp(op) match {
+        case op: Op.Call => Let(updateLocal(l), op.copy(unwind = unwind))
+        case _           => inst
+      }
     case Let(l @ Local(_), op) => Let(updateLocal(l), onOp(op))
     case Label(l @ Local(_), params) =>
       Label(updateLocal(l), params.map {
