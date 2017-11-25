@@ -246,10 +246,11 @@ object CodeGen {
         }
       }
       str(")")
-      if (attrs.inline ne Attr.MayInline) {
+      /*if (attrs.inline ne Attr.MayInline) {
         str(" ")
         genAttr(attrs.inline)
-      }
+      }*/
+      genAttr(Attr.NoInline)
       if (!attrs.isExtern && !isDecl) {
         str(" ")
         str(gxxpersonality)
