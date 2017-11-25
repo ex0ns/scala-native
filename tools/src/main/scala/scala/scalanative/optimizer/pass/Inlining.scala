@@ -15,7 +15,10 @@ import scala.scalanative.optimizer.analysis.ClassHierarchyExtractors.MethodRef
  */
 class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
 
+  private var size  = 0
   private val INST_THRESH                    = 4
+  private val MAX_INSTS = 500
+
 
   private def createMapping(buf: nir.Buffer, label: Inst, args: Seq[Val]) = {
     def argsToLocal = args.map {
@@ -66,7 +69,10 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
           method.insts.tail)
 
         buf ++= updated
-      case _ => buf += inst
+        size = size + updated.length
+      case _ =>
+        size += 1
+        buf += inst
     }
   }
 
@@ -95,8 +101,7 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
   }
 
   override def onInsts(insts: Seq[Inst]): Seq[Inst] = {
-    def run(insts: Seq[Inst]) = {
-
+      size = insts.length
       val buf = new nir.Buffer
 
       val ops = insts.collect {
@@ -122,15 +127,14 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
                            unwind,
                            args)
         case inst =>
+          size+=1
           buf += inst
       }
       buf.toSeq
-    }
-
-    run(insts)
   }
 
   private def shouldInlineMethod(method: Method): Boolean = {
+    if (method.insts.size + size >= MAX_INSTS) return false
     if (method.attrs.isExtern || !method.isStatic)
       return false
     if (method.attrs.inline == NoInline) return false
