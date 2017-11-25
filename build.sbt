@@ -469,6 +469,18 @@ lazy val benchmarks =
     )
     .enablePlugins(ScalaNativePlugin)
 
+lazy val inline =
+  project
+    .in(file("inline"))
+    .settings(projectSettings)
+    .settings(noPublishSettings)
+    .settings(
+      nativeMode := "release",
+      nativeOptimizerReporter := OptimizerReporter.toDirectory(
+        crossTarget.value)
+    )
+    .enablePlugins(ScalaNativePlugin)
+
 lazy val testingCompilerInterface =
   project
     .in(file("testing-compiler-interface"))

@@ -16,8 +16,6 @@ import scala.scalanative.optimizer.analysis.ClassHierarchyExtractors.MethodRef
 class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
 
   private val INST_THRESH                    = 4
-  private val INST_MAX_INST_THRESH           = 200
-  private val calls: mutable.HashSet[Global] = mutable.HashSet()
 
   private def createMapping(buf: nir.Buffer, label: Inst, args: Seq[Val]) = {
     def argsToLocal = args.map {
@@ -63,7 +61,6 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
                            args: Seq[Val]): Unit = {
     method match {
       case Some(method: Method) if shouldInlineMethod(method) =>
-        //calls.add(method.name)
         val mapping = createMapping(buf, method.insts.head, args)
         val updated = UpdateLabel(fresh, top, update, unwind, mapping).onInsts(
           method.insts.tail)
@@ -83,10 +80,7 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
 
   override def onDefn(defn: Defn): Defn = {
     defn match {
-      case defn @ Defn.Define(_, _, _, _) =>
-        calls.clear()
-        calls.add(defn.name)
-        super.onDefn(defn)
+      case defn @ Defn.Define(_, _, _, _) => super.onDefn(defn)
       case _ =>
         defn
     }
@@ -101,46 +95,48 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
   }
 
   override def onInsts(insts: Seq[Inst]): Seq[Inst] = {
-    val buf = new nir.Buffer
+    def run(insts: Seq[Inst]) = {
 
-    val ops = insts.collect {
-      case Let(local, op) => (local, op)
-    }.toMap
+      val buf = new nir.Buffer
 
-    insts.foreach {
-      case inst @ Let(local,
-                      Op.Call(Type.Function(_, ret),
-                              Val.Global(name, _),
-                              args,
-                              unwind)) =>
-        inlineGlobal(name, inst, buf, Val.Local(local, ret), unwind, args)
-      case inst @ Let(local,
-                      Op.Call(Type.Function(_, ret),
-                              Val.Local(localRef, _),
-                              args,
-                              unwind)) =>
-            inlineGlobal(resolveMethod(ops, localRef),
-                         inst,
-                         buf,
-                         Val.Local(local, ret),
-                         unwind,
-                         args)
-      case inst =>
-        buf += inst
+      val ops = insts.collect {
+        case Let(local, op) => (local, op)
+      }.toMap
+
+      insts.foreach {
+        case inst @ Let(local,
+                        Op.Call(Type.Function(_, ret),
+                                Val.Global(name, _),
+                                args,
+                                unwind)) =>
+          inlineGlobal(name, inst, buf, Val.Local(local, ret), unwind, args)
+        case inst @ Let(local,
+                        Op.Call(Type.Function(_, ret),
+                                Val.Local(localRef, _),
+                                args,
+                                unwind)) =>
+              inlineGlobal(resolveMethod(ops, localRef),
+                           inst,
+                           buf,
+                           Val.Local(local, ret),
+                           unwind,
+                           args)
+        case inst =>
+          buf += inst
+      }
+      buf.toSeq
     }
 
-    buf.toSeq
+    run(insts)
   }
 
   private def shouldInlineMethod(method: Method): Boolean = {
-    if (method.attrs.isExtern || isRecursive(method) || !method.isStatic)
+    if (method.attrs.isExtern || !method.isStatic)
       return false
     if (method.attrs.inline == NoInline) return false
     method.attrs.inline == AlwaysInline || method.name.show
       .contains("::init") || method.insts.size < INST_THRESH
   }
-
-  private def isRecursive(method: Method) = calls.contains(method.name)
 }
 
 /**
