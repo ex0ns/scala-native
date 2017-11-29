@@ -19,43 +19,8 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
   private val INST_THRESH                    = 4
   private val MAX_INSTS = 3000
 
+  println(s"Inlining Threshold: $INST_THRESH")
 
-  private def createMapping(buf: nir.Buffer, label: Inst, args: Seq[Val]) = {
-    def argsToLocal = args.map {
-      case Val.Local(local, _) => local
-      case other =>
-        val label = fresh()
-        buf += Let(label, Op.Copy(other))
-        label
-    }
-
-    label match {
-      case Label(_, params) =>
-        params
-          .map(_.name)
-          .zip(argsToLocal)
-          .toMap
-      case _ =>
-        throw new Exception("Should inline only if this is a method") // Is that even correct ?
-    }
-  }
-
-  /**
-   * %3(%1 : class @B, %2 : int):
-   * %4 = iadd[int] int 5, %2 : int
-   * ret %4 : int
-   * *
-   * Called using %8 = call[(class @B, int) => int] %7 : ptr(%5 : class @B, int 6)
-   * Here, as 6 is not a Local, we need to create a new Local for it (let's say %9)
-   * The method will create the map: Map(%1 -> %5, %2 -> %9), and produce the code (that will be inline):
-   * *
-   * %9 = copy 6 : int
-   * %13 = iadd[int] int 5, %9 : int
-   * %8 = copy %13 : int
-   * *
-   * Indeed, we need to remove the ret instruction and use the call's label to update its value
-   *
-   */
   private def inlineGlobal(method: Option[Node],
                            inst: Inst,
                            buf: nir.Buffer,
@@ -64,14 +29,14 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
                            args: Seq[Val]): Unit = {
     method match {
       case Some(method: Method) if shouldInlineMethod(method) =>
-        val mapping = createMapping(buf, method.insts.head, args)
-        val updated = UpdateLabel(fresh, top, update, unwind, mapping).onInsts(
-          method.insts.tail)
+        val updated = UpdateLabel(fresh, top, update, unwind).onInsts(
+          method.insts)
 
+        val newLabel = updated.head.asInstanceOf[Label]
+        buf += Jump(Next.Label(newLabel.name, args))
         buf ++= updated
         size = size + updated.length
       case _ =>
-        size += 1
         buf += inst
     }
   }
@@ -148,11 +113,10 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
  */
 private class UpdateLabel(
     ret: Val.Local,
-    unwind: Next,
-    mapping: Map[Local, Local])(implicit fresh: Fresh, top: Top)
+    unwind: Next)(implicit fresh: Fresh, top: Top)
     extends Pass {
 
-  private val reassign = mutable.Map[Local, Local](mapping.toSeq: _*)
+  private val reassign = mutable.Map[Local, Local]()
   private val buf      = new nir.Buffer
 
   private def updateLocal(old: Local): Local =
@@ -211,9 +175,8 @@ private object UpdateLabel {
   def apply(fresh: Fresh,
             top: Top,
             ret: Val.Local,
-            unwind: Next,
-            mapping: Map[Local, Local]) =
-    new UpdateLabel(ret, unwind, mapping)(fresh, top)
+            unwind: Next) =
+    new UpdateLabel(ret, unwind)(fresh, top)
 }
 
 object Inlining extends PassCompanion {
