@@ -47,6 +47,7 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
 
         val dst = Val.Local(name, Type.Ptr)
 
+
         buf ++= Seq(
           Let(name, Op.Stackalloc(struct, nir.Val.None)),
           Let(fresh(),
