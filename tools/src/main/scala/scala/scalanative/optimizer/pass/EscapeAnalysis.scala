@@ -60,7 +60,7 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
                       Val.Int(1), // Align
                       Val.Bool(false) // Volatile
           ), Next.None)),
-          Let(fresh(), Op.Store(rtti.struct, dst, rtti.value)) //@TODO Find why rtti does not work
+          Let(fresh(), Op.Store(Type.Ptr, dst, rtti.const)) //@TODO Find why rtti does not work
         )
       case inst @_ => buf += inst
     }
