@@ -17,7 +17,7 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
 
   private var size  = 0
   private val INST_THRESH                    = 4
-  private val MAX_INSTS = 500
+  private val MAX_INSTS = 3000
 
 
   private def createMapping(buf: nir.Buffer, label: Inst, args: Seq[Val]) = {
