@@ -17,7 +17,7 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
 
     insts foreach {
       case inst @ Let(name, Op.Classalloc(_)) =>
-        if(inst.show.contains("SimplestClassEver")) classes.add(name)
+        classes.add(name)
       case  Let(_, op : Op.Store) =>
         val vals = new AllVals()
         vals.onOp(op)
@@ -36,8 +36,7 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
         classes --= vals.vals
       case _ =>
     }
-    //println("Start of classes")
-    classes.foreach(x => println(x))
+
     val buf = new nir.Buffer()
 
     insts foreach {
@@ -46,19 +45,21 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
         val size = node.layout.size
         val rtti = node.rtti
 
+        val dst = Val.Local(name, Type.Ptr)
+
         buf ++= Seq(
           Let(name, Op.Stackalloc(struct, nir.Val.None)),
           Let(fresh(),
             Op.Call(memsetSig,
                     memset,
                     Seq(
-                      Val.Local(name, Type.Ptr),
+                      dst,
                       Val.Byte(0),
                       Val.Long(size),
                       Val.Int(1), // Align
                       Val.Bool(false) // Volatile
-          ), Next.None))
-          //,Let(fresh(), Op.Store(rtti.struct, Val.Local(name, Type.Ptr), rtti.value)) //@TODO Find why rtti does not work
+          ), Next.None)),
+          Let(fresh(), Op.Store(rtti.struct, dst, rtti.value)) //@TODO Find why rtti does not work
         )
       case inst @_ => buf += inst
     }

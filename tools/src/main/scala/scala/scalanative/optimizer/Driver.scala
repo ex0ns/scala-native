@@ -59,7 +59,7 @@ object Driver {
     pass.StringLowering,
     pass.UnitLowering,
     pass.NothingLowering,
-    //pass.EscapeAnalysis,
+    pass.EscapeAnalysis,
     pass.AllocLowering,
     pass.SizeofLowering,
     pass.CopyPropagation,
