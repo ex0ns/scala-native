@@ -19,55 +19,17 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
   private val INST_THRESH = 64
   private val MAX_INSTS = 10000
 
-  /**
-    * Inline a method
-    *
-    * If a method must be inlined (see `shouldInlineMethod`), add a JUMP to the method label as well as a new
-    * label (for the inlined function to return) to the current instructions.
-    *
-    * Returns the list of instructions that needs to be inline (we don't append them to the buffer because we need
-    * to run the inliner on them beforehand)
-    *
-    * @param method The node corresponding to the method to inline
-    * @param inst The current call instruction
-    * @param buffer Buffer of instructions
-    * @param update The value (local name and type) of the call, we need it to create the label with the right local
-    * @param unwind The unwind (needed for exception handling)
-    * @param args Calls args, need to be forwarded to the Jump
-    * @param currentSize The current size of the method
-    * @return the inlined instructions
-    */
-  private def inlineMethod(method: Option[Node],
-                           inst: Inst,
-                           buffer: nir.Buffer,
-                           update: Val.Local,
-                           unwind: Next,
-                           args: Seq[Val],
-                           currentSize: Int): Seq[Inst] = {
-    method match {
-      case Some(method: Method) if shouldInlineMethod(method, currentSize) =>
-        val phi = fresh()
-        val updated = UpdateLabel(fresh, top, phi, unwind).onInsts(method.insts)
 
-        val newLabel = updated.head.asInstanceOf[Label] // The first instruction must always be a label
-        buffer += Jump(Next.Label(newLabel.name, args))
-        buffer += Label(phi, Seq(update))
+  private def inlineCall(local: Val.Local, call: Op.Call, method: Method, buffer: nir.Buffer): Seq[Inst] = {
+    val phi = fresh()
+    val updated = UpdateLabel(fresh, top, phi, call.unwind).onInsts(method.insts)
 
-        updated
-      case _ =>
-        buffer += inst
-        List()
-    }
+    val newLabel = updated.head.asInstanceOf[Label] // The first instruction must always be a label
+    buffer += Jump(Next.Label(newLabel.name, call.args))
+    buffer += Label(phi, Seq(local))
+
+    updated
   }
-
-  private def inlineMethod(name: Global,
-                           inst: Inst,
-                           buf: nir.Buffer,
-                           update: Val.Local,
-                           unwind: Next,
-                           args: Seq[Val],
-                           currentSize: Int): Seq[Inst] =
-    inlineMethod(top.nodes.get(name), inst, buf, update, unwind, args, currentSize)
 
   override def onDefn(defn: Defn): Defn = {
     defn match {
@@ -77,17 +39,26 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
   }
 
   /**
-    * Method reference might be copied into new local name (Op.Copy).
-    * we need to recurse from copy to copy until we reach a MethodRef
+    * This method is used to resolve a Method from a given Value.
+    * A method can either be a Node in the Top object
+    * Or a local value, but a Node might be copied into multiple Local using
+    * Op.Copy, hence we need to recurse through the copies in order to find
+    * the original Node of the method
+    *
     * @param ops Map of available methods
-    * @param id ID to look for
+    * @param value  ID to look for
     * @return an option containing the Method (if any found)
     */
-  private def resolveMethod(ops: Map[Local, Op], id: Local): Option[Method] = {
-    ops.get(id) match {
-      case Some(Op.Method(_, MethodRef(_: Class, meth))) => Some(meth)
-      case Some(Op.Copy(Val.Local(local, _))) => resolveMethod(ops, local)
-      case _ => scala.None // ?
+  private def resolveMethod(ops: Map[Local, Op], value: Val): Option[Node] = {
+    value match {
+      case Val.Global(name, _) => top.nodes.get(name)
+      case Val.Local(localRef, _) => ops.get(localRef) match {
+        case Some(Op.Method(_, MethodRef(_: Class, meth))) => Some(meth)
+        case Some(Op.Copy(newValue)) =>
+          resolveMethod(ops, newValue)
+        case _ => scala.None
+      }
+      case _ => scala.None
     }
   }
 
@@ -109,15 +80,15 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
     * inlining depth.
     *
     * @param currentLevel The current level of inlining
-    * @param currentSize The number of instructions currently in the buffer
-    * @param insts The current instructions that might be inlined
-    * @param buffer The output buffer
+    * @param currentSize  The number of instructions currently in the buffer
+    * @param insts        The current instructions that might be inlined
+    * @param buffer       The output buffer
     * @return A new sequence of instructions that could be inlined (worklist)
     */
   private def inline(currentLevel: Int, currentSize: Int, insts: Seq[Inst], buffer: nir.Buffer): Seq[Inst] = {
 
     val ops = insts.collect {
-      case Let(local, op: Op.Copy) => (local, op)
+      case Let(local, op: Op.Call) => (local, op)
       case Let(local, op: Op.Method) => (local, op)
     }.toMap
 
@@ -125,19 +96,22 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
       val (inlined, size) = acc
 
       inst match {
-        case Let(local, Op.Call(Type.Function(_, ret), Val.Global(name, _), args, unwind)) =>
-          val method = inlineMethod(name, inst, buffer, Val.Local(local, ret), unwind, args, size)
-          (inlined ++ method , size + method.size)
-        case Let(local, Op.Call(Type.Function(_, ret), Val.Local(localRef, _), args, unwind)) =>
-          val method = inlineMethod(resolveMethod(ops, localRef), inst, buffer, Val.Local(local, ret), unwind, args, size)
-          (inlined ++ method, size + method.size)
+        case Let(local, op@Op.Call(Type.Function(_, ret), value, _, _)) =>
+          resolveMethod(ops, value) match {
+            case Some(method: Method) if shouldInlineMethod(method, size) =>
+              val inlinedInstructions = inlineCall(Val.Local(local, ret), op, method, buffer)
+              (inlined ++ inlinedInstructions, size + inlinedInstructions.size)
+            case _ =>
+              buffer += inst
+              acc
+          }
         case _ =>
           buffer += inst
           acc
       }
     }
 
-    if(currentLevel < MAX_DEPTH) inline(currentLevel+1, size, inlined, buffer)
+    if (currentLevel < MAX_DEPTH) inline(currentLevel + 1, size, inlined, buffer)
     else inlined
   }
 
@@ -170,8 +144,7 @@ private class UpdateLabel(
 
   override def onInsts(insts: Seq[Inst]): Seq[Inst] = {
     insts.foreach {
-      case Ret(v) =>
-        buf += Jump(Next.Label(ret, Seq(onVal(v))))
+      case Ret(v) => buf += Jump(Next.Label(ret, Seq(onVal(v))))
       case inst => buf += onInst(inst)
     }
 
@@ -179,8 +152,7 @@ private class UpdateLabel(
   }
 
   override def onInst(inst: Inst): Inst = inst match {
-    case Let(l@Local(_), op@Op.Call(_, _, _, Next.None))
-      if unwind != Next.None =>
+    case Let(l@Local(_), op@Op.Call(_, _, _, Next.None)) if unwind != Next.None =>
       onOp(op) match {
         case op: Op.Call => Let(updateLocal(l), op.copy(unwind = unwind))
         case _ => inst
