@@ -45,7 +45,6 @@ object Driver {
 
   private val loweringPasses = Seq(
     pass.Inlining,
-    pass.Inlining,
     pass.DynmethodLowering,
     pass.ExternHoisting,
     pass.ModuleLowering,
