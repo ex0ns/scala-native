@@ -59,9 +59,9 @@ class QueensBenchmark extends benchmarks.Benchmark[Boolean] {
           return true
         }
 
-        //if (placeQueen(c + 1)) {
+        if (placeQueen(c + 1)) {
           return true
-        //}
+        }
         setRowColumn(r, c, true)
       }
     }
