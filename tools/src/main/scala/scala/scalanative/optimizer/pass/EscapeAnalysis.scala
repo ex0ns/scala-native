@@ -9,73 +9,71 @@ import scala.scalanative.nir._
 import scala.scalanative.optimizer.analysis.ClassHierarchy._
 import scala.scalanative.optimizer.analysis.ClassHierarchyExtractors.ClassRef
 
-sealed case class LocalEscape(var simpleEscape : Boolean = false, mutableList: mutable.MutableList[Local] = mutable.MutableList[Local]())
+sealed case class LocalEscape(simpleEscape : Boolean = false, dependsOn: Seq[Local] = Seq[Local]())
 
 class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
   import EscapeAnalysis._
+  private type EscapeMap = Map[Local, LocalEscape]
 
-  private def updateMap(map: Map[Local, LocalEscape], locals: Set[Local]) = {
-    locals.foreach { local =>
-      map.get(local) match {
-        case Some(x) => x.simpleEscape = true
-        case _ =>
-      }
-    }
-  }
-
-  private def escape(map: Map[Local, LocalEscape], local: Local, visited: scala.collection.Set[Local] = scala.collection.Set[Local]()) : Boolean = {
+  private def escape(map: EscapeMap, local: Local, visited: scala.collection.Set[Local] = scala.collection.Set[Local]()) : Boolean = {
     map.get(local) match {
       case Some(x) =>
         x.simpleEscape ||
-          visited.intersect(x.mutableList.toSet).nonEmpty ||
-          x.mutableList.foldLeft(false)((acc, dep) => acc ||
+          visited.intersect(x.dependsOn.toSet).nonEmpty ||
+          x.dependsOn.foldLeft(false)((acc, dep) => acc ||
             escape(map, dep, visited + local))
       case None => false
     }
   }
 
+
+  private def paramEscape(escapeMap: EscapeMap, label: Label, args: Seq[Val]) = {
+    label.params.zip(args).collect {
+      case (param, v: Val.Local) =>
+        escapeMap.get(v.name).fold(Seq[(Local, LocalEscape)]()) { localEscape =>
+          Seq((v.name, localEscape.copy(dependsOn = localEscape.dependsOn :+ param.name)), (param.name, LocalEscape()))
+        }
+    }.flatten.toMap
+  }
+
+
   override def onInsts(insts: Seq[Inst]): Seq[Inst] = {
     var t = false
-    val escapeMap : mutable.Map[Local, LocalEscape] = mutable.Map[Local, LocalEscape]()
 
     val labels : Seq[Label] = insts.collect {
       case i : Label => i
     }
 
-    insts foreach {
-      case inst @ Let(local, op: Op.Classalloc) =>
-        if(inst.show.contains("Simplest")) {
-          t = true
-          escapeMap.update(local, LocalEscape())
-        }
-      case Let(local, Op.Copy(v: Val.Local)) =>
-        escapeMap.get(v.name) match {
-          case Some(localEscape) =>
-            localEscape.mutableList += local
-            escapeMap.update(local, LocalEscape())
-          case None =>
-        }
-      case  Let(_, op : Op.Store) => // Obvious Escape
-        val vals = new AllVals()
-        vals.onOp(op)
-        //updateMap(escapeMap, vals.vals.toSet)
-      case Ret(v : Val.Local) => escapeMap.get(v.name).foreach(_.simpleEscape = true)
-      case Let(_, op: Op.Call) => // Obvious escape
-        val vals = new AllVals()
-        vals.onOp(op)
-        //updateMap(escapeMap, vals.vals.toSet)
-      case Jump(next @ Next.Label(name, args)) =>
-        labels.find(l => l.name == name) match {
-          case Some(label) =>
-            label.params.zip(args).foreach {
-              case (param, v : Val.Local) if escapeMap.keys.exists(_ == v.name) =>
-                escapeMap.update(param.name, LocalEscape())
-                escapeMap(v.name).mutableList += param.name
-              case _ =>
-            }
-          case _ =>
-        }
-      case _ =>
+    val escapeMap = insts.foldLeft(Map[Local, LocalEscape]()) { (escapeMap, inst) => {
+      inst match {
+        case inst@Let(local, op: Op.Classalloc) =>
+          if (inst.show.contains("Simplest")) {
+            t = true
+            escapeMap + (local -> LocalEscape())
+          }
+          else escapeMap
+        case Let(local, Op.Copy(v: Val.Local)) =>
+          escapeMap.get(v.name).fold(escapeMap) {
+            localEscape => escapeMap + (local -> LocalEscape(), v.name -> localEscape.copy(dependsOn = localEscape.dependsOn :+ local))
+          }
+        case Jump(Next.Label(name, args)) =>
+          labels.find(l => l.name == name).fold(escapeMap) { label =>
+            escapeMap ++ paramEscape(escapeMap, label, args)
+          }
+          // Cases for obvious escape
+        case Let(_, op: Op.Store) => // Obvious Escape
+          val vals = new AllVals()
+          vals.onOp(op)
+          escapeMap
+        case Ret(v: Val.Local) =>
+          escapeMap.get(v.name).fold(escapeMap) { localEscape => escapeMap + (v.name -> localEscape.copy(simpleEscape = true)) }
+        case Let(_, op: Op.Call) => // Obvious escape
+          val vals = new AllVals()
+          vals.onOp(op)
+          escapeMap
+        case _ => escapeMap
+      }
+    }
     }
 
     if(t) {
@@ -85,7 +83,7 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
     val buf = new nir.Buffer()
 
     insts foreach {
-      case inst @ Let(name, Op.Classalloc(ClassRef(node))) if inst.show.contains("Simplest") && !escape(escapeMap.toMap, name) =>
+      case inst @ Let(name, Op.Classalloc(ClassRef(node))) if inst.show.contains("Simplest") && !escape(escapeMap, name) =>
         val struct = node.layout.struct
         val size = node.layout.size
         val rtti = node.rtti
