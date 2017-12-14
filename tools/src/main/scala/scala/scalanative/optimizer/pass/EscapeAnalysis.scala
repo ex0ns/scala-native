@@ -139,14 +139,3 @@ object EscapeAnalysis extends PassCompanion {
     new EscapeAnalysis(config)(top)
 }
 
-private class AllVals extends Pass {
-  val vals: mutable.Set[Local] = mutable.Set[Local]()
-
-  override def onVal(value: Val): Val = value match {
-    case Val.Local(local, _) =>
-      vals.add(local)
-      value
-    case _ => super.onVal(value)
-
-  }
-}
