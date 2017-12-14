@@ -12,7 +12,7 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
 
   private sealed case class LocalEscape(simpleEscape: Boolean = false,
                                         dependsOn: Seq[Local] = Seq[Local]()) {
-    def escapes = LocalEscape(simpleEscape = true, dependsOn)
+    def escapes            = LocalEscape(simpleEscape = true, dependsOn)
     def addDep(dep: Local) = LocalEscape(simpleEscape, dependsOn :+ dep)
   }
 
@@ -24,7 +24,8 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
                         scala.collection.Set[Local]()): Boolean = {
     def escapes0(x: LocalEscape) = {
       val isLooping = visited.intersect(x.dependsOn.toSet).nonEmpty
-      val depsEscape = x.dependsOn.foldLeft(false)((escape, dep) => escape || escapes(map, dep, visited + local))
+      val depsEscape = x.dependsOn.foldLeft(false)((escape, dep) =>
+        escape || escapes(map, dep, visited + local))
       x.simpleEscape || isLooping || depsEscape
     }
 
@@ -57,7 +58,9 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
         implicit map: EscapeMap) = map.get(value.name).fold(map)(f)
 
     def markAsEscaped(value: Val.Local)(implicit map: EscapeMap) =
-      updateMap(value) { localEscape => map + (value.name -> localEscape.escapes) }
+      updateMap(value) { localEscape =>
+        map + (value.name -> localEscape.escapes)
+      }
 
     val escapeMap = insts.foldLeft(Map[Local, LocalEscape]()) {
       (escapeMap, inst) =>
@@ -67,17 +70,23 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
             case Let(local, _: Op.Classalloc) =>
               escapeMap + (local -> LocalEscape())
             case Let(local, Op.Copy(v: Val.Local)) =>
-              updateMap(v) { localEscape => escapeMap + (local -> LocalEscape(), v.name -> localEscape.addDep(local)) }
+              updateMap(v) { localEscape =>
+                escapeMap + (local -> LocalEscape(), v.name -> localEscape
+                  .addDep(local))
+              }
             case Jump(Next.Label(name, args)) =>
               labels.find(l => l.name == name).fold(escapeMap) { label =>
                 escapeMap ++ paramEscape(escapeMap, label, args)
               }
             // Cases for obvious escape
-            case Ret(v: Val.Local) => markAsEscaped(v)
-            case Throw(v: Val.Local, _) => markAsEscaped(v)
+            case Ret(v: Val.Local)                       => markAsEscaped(v)
+            case Throw(v: Val.Local, _)                  => markAsEscaped(v)
             case Let(_, Op.Store(_, _, v: Val.Local, _)) => markAsEscaped(v)
             case Let(_, op: Op.Call) =>
-              op.args.collect { case a : Val.Local => a }.foldLeft(escapeMap) { (esc, v) => markAsEscaped(v)(esc) }
+              op.args.collect { case a: Val.Local => a }.foldLeft(escapeMap) {
+                (esc, v) =>
+                  markAsEscaped(v)(esc)
+              }
             case _ => escapeMap
           }
         }
@@ -86,7 +95,8 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
     val buf = new nir.Buffer()
 
     insts foreach {
-      case Let(name, Op.Classalloc(ClassRef(node))) if !escapes(escapeMap, name) =>
+      case Let(name, Op.Classalloc(ClassRef(node)))
+          if !escapes(escapeMap, name) =>
         val struct = node.layout.struct
         val size   = node.layout.size
         val rtti   = node.rtti
@@ -131,4 +141,3 @@ object EscapeAnalysis extends PassCompanion {
   override def apply(config: tools.Config, top: Top) =
     new EscapeAnalysis(config)(top)
 }
-
