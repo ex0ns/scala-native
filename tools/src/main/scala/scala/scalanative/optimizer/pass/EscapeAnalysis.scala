@@ -4,43 +4,88 @@ package pass
 
 
 import scala.collection.mutable
-import scala.scalanative.nir.Inst.{Jump, Label, Let}
+import scala.scalanative.nir.Inst.{Jump, Label, Let, Ret}
 import scala.scalanative.nir._
 import scala.scalanative.optimizer.analysis.ClassHierarchy._
 import scala.scalanative.optimizer.analysis.ClassHierarchyExtractors.ClassRef
 
+sealed case class LocalEscape(var simpleEscape : Boolean = false, mutableList: mutable.MutableList[Local] = mutable.MutableList[Local]())
+
 class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
   import EscapeAnalysis._
 
+  private def updateMap(map: Map[Local, LocalEscape], locals: Set[Local]) = {
+    locals.foreach { local =>
+      map.get(local) match {
+        case Some(x) => x.simpleEscape = true
+        case _ =>
+      }
+    }
+  }
+
+  private def escape(map: Map[Local, LocalEscape], local: Local, visited: scala.collection.Set[Local] = scala.collection.Set[Local]()) : Boolean = {
+    map.get(local) match {
+      case Some(x) =>
+        x.simpleEscape ||
+          visited.intersect(x.mutableList.toSet).nonEmpty ||
+          x.mutableList.foldLeft(false)((acc, dep) => acc ||
+            escape(map, dep, visited + local))
+      case None => false
+    }
+  }
+
   override def onInsts(insts: Seq[Inst]): Seq[Inst] = {
-    val classes = new mutable.HashSet[Local]()
+    var t = false
+    val escapeMap : mutable.Map[Local, LocalEscape] = mutable.Map[Local, LocalEscape]()
+
+    val labels : Seq[Label] = insts.collect {
+      case i : Label => i
+    }
 
     insts foreach {
-      case inst @ Let(name, Op.Classalloc(_)) =>
-        classes.add(name)
-      case  Let(_, op : Op.Store) =>
+      case inst @ Let(local, op: Op.Classalloc) =>
+        if(inst.show.contains("Simplest")) {
+          t = true
+          escapeMap.update(local, LocalEscape())
+        }
+      case Let(local, Op.Copy(v: Val.Local)) =>
+        escapeMap.get(v.name) match {
+          case Some(localEscape) =>
+            localEscape.mutableList += local
+            escapeMap.update(local, LocalEscape())
+          case None =>
+        }
+      case  Let(_, op : Op.Store) => // Obvious Escape
         val vals = new AllVals()
         vals.onOp(op)
-        classes --= vals.vals
-      case Let(_, op: Op.Copy) =>
+        //updateMap(escapeMap, vals.vals.toSet)
+      case Ret(v : Val.Local) => escapeMap.get(v.name).foreach(_.simpleEscape = true)
+      case Let(_, op: Op.Call) => // Obvious escape
         val vals = new AllVals()
         vals.onOp(op)
-        classes --= vals.vals
-      case Let(_, op: Op.Call) =>
-        val vals = new AllVals()
-        vals.onOp(op)
-        classes --= vals.vals
-      case Jump(next @ Next.Label(_, args)) =>
-        val vals = new AllVals()
-        vals.onNext(next)
-        classes --= vals.vals
+        //updateMap(escapeMap, vals.vals.toSet)
+      case Jump(next @ Next.Label(name, args)) =>
+        labels.find(l => l.name == name) match {
+          case Some(label) =>
+            label.params.zip(args).foreach {
+              case (param, v : Val.Local) if escapeMap.keys.exists(_ == v.name) =>
+                escapeMap.update(param.name, LocalEscape())
+                escapeMap(v.name).mutableList += param.name
+              case _ =>
+            }
+          case _ =>
+        }
       case _ =>
+    }
+
+    if(t) {
+      println(escapeMap)
     }
 
     val buf = new nir.Buffer()
 
     insts foreach {
-      case inst @ Let(name, Op.Classalloc(ClassRef(node))) if classes.contains(name) =>
+      case inst @ Let(name, Op.Classalloc(ClassRef(node))) if inst.show.contains("Simplest") && !escape(escapeMap.toMap, name) =>
         val struct = node.layout.struct
         val size = node.layout.size
         val rtti = node.rtti
@@ -60,7 +105,7 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
                       Val.Int(1), // Align
                       Val.Bool(false) // Volatile
           ), Next.None)),
-          Let(fresh(), Op.Store(Type.Ptr, dst, rtti.const)) //@TODO Find why rtti does not work
+          Let(fresh(), Op.Store(Type.Ptr, dst, rtti.const))
         )
       case inst @_ => buf += inst
     }
