@@ -3,7 +3,7 @@ package optimizer
 package pass
 
 import scala.collection.mutable
-import scala.scalanative.nir.Inst.{Jump, Label, Let, Ret}
+import scala.scalanative.nir.Inst._
 import scala.scalanative.nir._
 import scala.scalanative.optimizer.analysis.ClassHierarchy._
 import scala.scalanative.optimizer.analysis.ClassHierarchyExtractors.ClassRef
@@ -54,28 +54,32 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
   override def onInsts(insts: Seq[Inst]): Seq[Inst] = {
     val labels: Seq[Label] = insts.collect { case i: Label => i }
 
-    def updateMap(map: EscapeMap, value: Val.Local)(
-        f: LocalEscape => EscapeMap) = map.get(value.name).fold(map)(f)
+    def updateMap(value: Val.Local)(f: LocalEscape => EscapeMap)(
+        implicit map: EscapeMap) = map.get(value.name).fold(map)(f)
+
 
     val escapeMap = insts.foldLeft(Map[Local, LocalEscape]()) {
       (escapeMap, inst) =>
         {
+          implicit val _ = escapeMap
           inst match {
             case Let(local, op: Op.Classalloc) =>
               escapeMap + (local -> LocalEscape())
             case Let(local, Op.Copy(v: Val.Local)) =>
-              updateMap(escapeMap, v) { localEscape => escapeMap + (local -> LocalEscape(), v.name -> localEscape.addDep(local)) }
+              updateMap(v) { localEscape => escapeMap + (local -> LocalEscape(), v.name -> localEscape.addDep(local)) }
             case Jump(Next.Label(name, args)) =>
               labels.find(l => l.name == name).fold(escapeMap) { label =>
                 escapeMap ++ paramEscape(escapeMap, label, args)
               }
             // Cases for obvious escape
+            case Ret(v: Val.Local) =>
+              updateMap(v) { localEscape => escapeMap + (v.name -> localEscape.escapes) }
+            case Throw(v: Val.Local, _) =>
+              updateMap(v) { localEscape => escapeMap + (v.name -> localEscape.escapes) } //@TODO remove duplication
             case Let(_, op: Op.Store) => // Obvious Escape
               val vals = new AllVals()
               vals.onOp(op)
               escapeMap
-            case Ret(v: Val.Local) =>
-              updateMap(escapeMap, v) { localEscape => escapeMap + (v.name -> localEscape.escapes) }
             case Let(_, op: Op.Call) => // Obvious escape
               val vals = new AllVals()
               vals.onOp(op)
