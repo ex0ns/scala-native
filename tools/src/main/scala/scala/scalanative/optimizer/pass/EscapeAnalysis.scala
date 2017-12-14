@@ -57,13 +57,15 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
     def updateMap(value: Val.Local)(f: LocalEscape => EscapeMap)(
         implicit map: EscapeMap) = map.get(value.name).fold(map)(f)
 
+    def markAsEscaped(value: Val.Local)(implicit map: EscapeMap) =
+      updateMap(value) { localEscape => map + (value.name -> localEscape.escapes) }
 
     val escapeMap = insts.foldLeft(Map[Local, LocalEscape]()) {
       (escapeMap, inst) =>
         {
           implicit val _ = escapeMap
           inst match {
-            case Let(local, op: Op.Classalloc) =>
+            case Let(local, _: Op.Classalloc) =>
               escapeMap + (local -> LocalEscape())
             case Let(local, Op.Copy(v: Val.Local)) =>
               updateMap(v) { localEscape => escapeMap + (local -> LocalEscape(), v.name -> localEscape.addDep(local)) }
@@ -72,15 +74,13 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
                 escapeMap ++ paramEscape(escapeMap, label, args)
               }
             // Cases for obvious escape
-            case Ret(v: Val.Local) =>
-              updateMap(v) { localEscape => escapeMap + (v.name -> localEscape.escapes) }
-            case Throw(v: Val.Local, _) =>
-              updateMap(v) { localEscape => escapeMap + (v.name -> localEscape.escapes) } //@TODO remove duplication
-            case Let(_, op: Op.Store) => // Obvious Escape
+            case Ret(v: Val.Local) => markAsEscaped(v)
+            case Throw(v: Val.Local, _) => markAsEscaped(v)
+            case Let(_, op: Op.Store) => //@TODO detect escaping related to Op.Store
               val vals = new AllVals()
               vals.onOp(op)
               escapeMap
-            case Let(_, op: Op.Call) => // Obvious escape
+            case Let(_, op: Op.Call) => //@TODO detect escaping related to Op.Call
               val vals = new AllVals()
               vals.onOp(op)
               escapeMap
@@ -94,6 +94,7 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
     insts foreach {
       case inst @ Let(name, Op.Classalloc(ClassRef(node)))
           if inst.show.contains("Simplest") && !escapes(escapeMap, name) =>
+        println(escapeMap)
         val struct = node.layout.struct
         val size   = node.layout.size
         val rtti   = node.rtti
