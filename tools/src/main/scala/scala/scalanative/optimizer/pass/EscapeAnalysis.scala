@@ -2,7 +2,6 @@ package scala.scalanative
 package optimizer
 package pass
 
-import scala.collection.mutable
 import scala.scalanative.nir.Inst._
 import scala.scalanative.nir._
 import scala.scalanative.optimizer.analysis.ClassHierarchy._
@@ -87,13 +86,7 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
     val buf = new nir.Buffer()
 
     insts foreach {
-      case inst @ Let(name, Op.Classalloc(ClassRef(node)))
-        if inst.show.contains("Simplest") && escapes(escapeMap, name) =>
-        println(escapeMap)
-        buf += inst
-      case inst @ Let(name, Op.Classalloc(ClassRef(node)))
-          if inst.show.contains("Simplest") && !escapes(escapeMap, name) =>
-        println(escapeMap)
+      case Let(name, Op.Classalloc(ClassRef(node))) if !escapes(escapeMap, name) =>
         val struct = node.layout.struct
         val size   = node.layout.size
         val rtti   = node.rtti
