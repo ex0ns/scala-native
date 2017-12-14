@@ -23,11 +23,11 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
                       local: Local,
                       visited: scala.collection.Set[Local] =
                         scala.collection.Set[Local]()): Boolean = {
-    def escapes0(x: LocalEscape) =
-      x.simpleEscape ||
-        visited.intersect(x.dependsOn.toSet).nonEmpty ||
-        x.dependsOn.foldLeft(false)((acc, dep) =>
-          acc || escapes(map, dep, visited + local))
+    def escapes0(x: LocalEscape) = {
+      val isLooping = visited.intersect(x.dependsOn.toSet).nonEmpty
+      val depsEscape = x.dependsOn.foldLeft(false)((escape, dep) => escape || escapes(map, dep, visited + local))
+      x.simpleEscape || isLooping || depsEscape
+    }
 
     map.get(local).fold(false)(escapes0)
   }
@@ -77,10 +77,8 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
             case Ret(v: Val.Local) => markAsEscaped(v)
             case Throw(v: Val.Local, _) => markAsEscaped(v)
             case Let(_, Op.Store(_, _, v: Val.Local, _)) => markAsEscaped(v)
-            case Let(_, op: Op.Call) => //@TODO detect escaping related to Op.Call
-              val vals = new AllVals()
-              vals.onOp(op)
-              escapeMap
+            case Let(_, op: Op.Call) =>
+              op.args.collect { case a : Val.Local => a }.foldLeft(escapeMap) { (esc, v) => markAsEscaped(v)(esc) }
             case _ => escapeMap
           }
         }
