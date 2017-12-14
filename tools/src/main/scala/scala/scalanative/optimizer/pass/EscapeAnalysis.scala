@@ -76,10 +76,7 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
             // Cases for obvious escape
             case Ret(v: Val.Local) => markAsEscaped(v)
             case Throw(v: Val.Local, _) => markAsEscaped(v)
-            case Let(_, op: Op.Store) => //@TODO detect escaping related to Op.Store
-              val vals = new AllVals()
-              vals.onOp(op)
-              escapeMap
+            case Let(_, Op.Store(_, _, v: Val.Local, _)) => markAsEscaped(v)
             case Let(_, op: Op.Call) => //@TODO detect escaping related to Op.Call
               val vals = new AllVals()
               vals.onOp(op)
@@ -92,6 +89,10 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
     val buf = new nir.Buffer()
 
     insts foreach {
+      case inst @ Let(name, Op.Classalloc(ClassRef(node)))
+        if inst.show.contains("Simplest") && escapes(escapeMap, name) =>
+        println(escapeMap)
+        buf += inst
       case inst @ Let(name, Op.Classalloc(ClassRef(node)))
           if inst.show.contains("Simplest") && !escapes(escapeMap, name) =>
         println(escapeMap)
