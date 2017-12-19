@@ -3,7 +3,7 @@ package optimizer
 package pass
 
 import scala.scalanative.nir.Inst.Let
-import scala.scalanative.nir.{Inst, Op, Type, Val}
+import scala.scalanative.nir._
 import scala.scalanative.optimizer.analysis.ClassHierarchy.Top
 import scala.scalanative.tools.Config
 
@@ -114,10 +114,14 @@ class EscapeTest extends OptimizerSpec {
   it should "Should ClassAlloc if it escapes (throw)" in {
     val code = s"""
                   |object Main {
-                  |private class MyException(s: ${className}) extends Exception
+                  |private case class MyException(s: ${className}) extends Exception
                   |
                   |  def main(args: Array[String]) : Unit = {
-                  |    create()
+                  |   try {
+                  |     create()
+                  |   } catch {
+                  |     case e: MyException => println(e.s.x)
+                  |   }
                   |  }
                   |
                   |  @noinline def create() : Unit = {
@@ -125,7 +129,7 @@ class EscapeTest extends OptimizerSpec {
                   |    println(s.x)
                   |    s.x = 10
                   |    println(s.x)
-                  |    throw new MyException(s)
+                  |    throw MyException(s)
                   |  }
                   |}
                   |
@@ -136,6 +140,7 @@ class EscapeTest extends OptimizerSpec {
 
     shouldClassAlloc(code)
   }
+
   private class ClassAllocChecker extends Pass {
     override def onInst(inst: Inst): Inst = inst match {
       case inst @ Let(_, _: Op.Classalloc) if inst.show.contains(className) =>
