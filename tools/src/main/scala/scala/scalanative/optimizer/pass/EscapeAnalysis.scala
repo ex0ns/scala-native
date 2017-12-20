@@ -18,6 +18,8 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
 
   private type EscapeMap = Map[Local, LocalEscape]
 
+  var test = 0
+
   private def escapes(map: EscapeMap,
                       local: Local,
                       visited: scala.collection.Set[Local] =
@@ -93,18 +95,15 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
     }
 
     val buf = new nir.Buffer()
-
-    insts foreach {
+    val replaced = insts.foldLeft(Seq[Inst]()) ((acc, inst) => inst match {
       case Let(name, Op.Classalloc(ClassRef(node)))
           if !escapes(escapeMap, name) =>
         val struct = node.layout.struct
         val size   = node.layout.size
         val rtti   = node.rtti
-
         val dst = Val.Local(name, Type.Ptr)
 
         buf ++= Seq(
-          Let(name, Op.Stackalloc(struct, nir.Val.None)),
           Let(fresh(),
               Op.Call(memsetSig,
                       memset,
@@ -118,10 +117,14 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
                       Next.None)),
           Let(fresh(), Op.Store(Type.Ptr, dst, rtti.const))
         )
-      case inst @ _ => buf += inst
-    }
+        acc :+ Let(name, Op.Stackalloc(struct, nir.Val.None))
+      case inst @ _ =>
+        buf += inst
+        acc
+    })
 
-    buf.toSeq
+    val instructions = buf.toSeq
+    (instructions.head +: replaced) ++ instructions.tail
   }
 }
 
