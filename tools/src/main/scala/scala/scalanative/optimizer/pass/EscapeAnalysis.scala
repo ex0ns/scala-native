@@ -12,13 +12,11 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
 
   private sealed case class LocalEscape(simpleEscape: Boolean = false,
                                         dependsOn: Seq[Local] = Seq[Local]()) {
-    def escapes            = LocalEscape(simpleEscape = true, dependsOn)
-    def addDep(dep: Local) = LocalEscape(simpleEscape, dependsOn :+ dep)
+    def escapes            = copy(simpleEscape = true)
+    def addDep(dep: Local) = copy(dependsOn =  dependsOn :+ dep)
   }
 
   private type EscapeMap = Map[Local, LocalEscape]
-
-  var test = 0
 
   private def escapes(map: EscapeMap,
                       local: Local,
