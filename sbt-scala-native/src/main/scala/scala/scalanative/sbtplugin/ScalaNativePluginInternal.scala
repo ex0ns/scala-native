@@ -2,24 +2,26 @@ package scala.scalanative
 package sbtplugin
 
 import sbtcrossproject.CrossPlugin.autoImport._
-import ScalaNativePlugin.autoImport._
 
+import ScalaNativePlugin.autoImport._
 import scalanative.nir
 import scalanative.tools
 import scalanative.io.VirtualDirectory
 import scalanative.util.{Scope => ResourceScope}
 import scalanative.sbtplugin.Utilities._
 import scalanative.sbtplugin.TestUtilities._
-
 import sbt.testing.Framework
-import testinterface.ScalaNativeFramework
 
-import sbt._, Keys._, complete.DefaultParsers._
+import testinterface.ScalaNativeFramework
+import sbt._
+import Keys._
+import complete.DefaultParsers._
 
 import scala.util.Try
-
 import System.{lineSeparator => nl}
 import java.io.ByteArrayInputStream
+
+import scala.scalanative.tools.InliningConfig
 
 object ScalaNativePluginInternal {
 
@@ -120,7 +122,17 @@ object ScalaNativePluginInternal {
     nativeOptimizerReporter := tools.OptimizerReporter.empty,
     nativeOptimizerReporter in NativeTest := (nativeOptimizerReporter in Test).value,
     nativeGC := "boehm",
-    nativeGC in NativeTest := (nativeGC in Test).value
+    nativeGC in NativeTest := (nativeGC in Test).value,
+    inliningThreshold := 64,
+    inliningThreshold in NativeTest := (inliningThreshold in Test).value,
+    maxMethodSize := 10000,
+    maxMethodSize in NativeTest := (maxMethodSize in Test).value,
+    inliningDepth := 2,
+    inliningDepth in NativeTest := (inliningDepth in Test).value,
+    disableLLVM := false,
+    disableLLVM in NativeTest := (disableLLVM in Test).value,
+    disableEscape := false,
+    disableEscape in NativeTest := (disableEscape in Test).value
   )
 
   lazy val scalaNativeGlobalSettings: Seq[Setting[_]] = Seq(
@@ -189,6 +201,7 @@ object ScalaNativePluginInternal {
         .withWorkdir(cwd)
         .withTarget(nativeTarget.value)
         .withMode(mode(nativeMode.value))
+        .withInliningConfig(InliningConfig(inliningThreshold.value, maxMethodSize.value, inliningDepth.value, disableLLVM.value, disableEscape.value))
     },
     nativeUnpackLib := {
       val cwd       = nativeWorkdir.value

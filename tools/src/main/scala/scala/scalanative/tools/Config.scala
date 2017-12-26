@@ -2,7 +2,11 @@ package scala.scalanative
 package tools
 
 import java.io.File
+
 import nir.Global
+import scala.scalanative.optimizer.pass.EscapeAnalysis
+
+case class InliningConfig(inliningThreshold : Int = 64, maxMethodSize : Int = 10000, maxDepth : Int = 2, disableLLVM : Boolean = false, disableEscape: Boolean = false)
 
 sealed trait Config {
 
@@ -21,6 +25,8 @@ sealed trait Config {
   /** Compilation mode. */
   def mode: Mode
 
+  def inlining: InliningConfig
+
   /** Create new config with given entry point. */
   def withEntry(value: Global): Config
 
@@ -35,6 +41,9 @@ sealed trait Config {
 
   /** Create a new config with given compilation mode. */
   def withMode(value: Mode): Config
+
+  /** Create a new config with a given inlining config */
+  def withInliningConfig(inlining: InliningConfig) : Config
 }
 
 object Config {
@@ -45,13 +54,16 @@ object Config {
          paths = Seq.empty,
          workdir = new File(""),
          target = "",
-         mode = Mode.Debug)
+         mode = Mode.Debug,
+      inlining = InliningConfig()
+    )
 
   private final case class Impl(entry: Global,
                                 paths: Seq[File],
                                 workdir: File,
                                 target: String,
-                                mode: Mode)
+                                mode: Mode,
+                                inlining: InliningConfig)
       extends Config {
     def withEntry(value: Global): Config =
       copy(entry = value)
@@ -67,5 +79,8 @@ object Config {
 
     def withMode(value: Mode): Config =
       copy(mode = value)
+
+    def withInliningConfig(inlining: InliningConfig): Config =
+      copy(inlining = inlining)
   }
 }

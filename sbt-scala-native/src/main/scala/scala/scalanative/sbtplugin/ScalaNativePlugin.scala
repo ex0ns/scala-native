@@ -48,6 +48,21 @@ object ScalaNativePlugin extends AutoPlugin {
 
     val nativeGC =
       settingKey[String]("GC choice, either \"none\", \"boehm\" or \"immix\".")
+
+    val inliningThreshold =
+      settingKey[Int]("The upper limit for the number of instruction to inline")
+
+    val maxMethodSize =
+      settingKey[Int]("The maximum size of a method (number of instructions)")
+
+    val inliningDepth =
+      settingKey[Int]("The maximum depth of function to inline")
+
+    val disableLLVM =
+      settingKey[Boolean]("Enable/Disable LLVM inlining")
+
+    val disableEscape =
+      settingKey[Boolean]("Enable/Disable escape analysis")
   }
 
   override def globalSettings: Seq[Setting[_]] =

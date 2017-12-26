@@ -43,7 +43,7 @@ object Driver {
     pass.GlobalValueNumbering
   )
 
-  private val loweringPasses = Seq(
+  private def loweringPasses(config: tools.Config) = Seq(
     pass.Inlining,
     pass.DynmethodLowering,
     pass.ExternHoisting,
@@ -56,15 +56,14 @@ object Driver {
     pass.TraitLowering,
     pass.ClassLowering,
     pass.StringLowering,
-    pass.UnitLowering,
-    pass.NothingLowering,
-    pass.EscapeAnalysis,
-    pass.AllocLowering,
+    pass.UnitLowering, pass.NothingLowering) ++ escape(config) ++ Seq(pass.AllocLowering,
     pass.SizeofLowering,
     pass.CopyPropagation,
     pass.DeadCodeElimination
     // pass.SafepointInsertion
-  )
+    )
+
+  private def escape(config: tools.Config) = if(config.inlining.disableEscape) Seq() else Seq(pass.EscapeAnalysis)
 
   /** Create driver with default pipeline for this configuration. */
   def apply(config: tools.Config): Driver = {
@@ -72,10 +71,10 @@ object Driver {
       case Mode.Debug   => fastOptPasses
       case Mode.Release => fullOptPasses
     }
-    new Impl(injectionPasses ++ optPasses ++ loweringPasses)
+    new Impl(injectionPasses ++ optPasses ++ loweringPasses(config))
   }
 
-  /** Create an empty pass-lesss driver. */
+  /** Create an empty pass-less driver. */
   def empty: Driver =
     new Impl(Seq.empty)
 

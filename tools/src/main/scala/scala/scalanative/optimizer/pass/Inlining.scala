@@ -15,10 +15,11 @@ import scala.scalanative.optimizer.analysis.ClassHierarchyExtractors.MethodRef
   */
 class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
 
-  private val MAX_DEPTH = 2
-  private val INST_THRESH = 64
-  private val MAX_INSTS = 10000
+  private val MAX_DEPTH = config.inlining.maxDepth
+  private val INST_THRESH = config.inlining.inliningThreshold
+  private val MAX_INSTS = config.inlining.maxMethodSize
 
+  println(s"Running Inlining with ${config.inlining}")
 
   private def inlineCall(local: Val.Local, call: Op.Call, method: Method, buffer: nir.Buffer): Seq[Inst] = {
     val phi = fresh()
