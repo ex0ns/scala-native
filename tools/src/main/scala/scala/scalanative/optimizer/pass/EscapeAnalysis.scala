@@ -93,7 +93,7 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
     }
 
     val buf = new nir.Buffer()
-    val replaced = insts.foldLeft(Seq[Inst]()) ((acc, inst) => inst match {
+    val stackAllocs = insts.foldLeft(Seq[Inst]()) ((acc, inst) => inst match {
       case Let(name, Op.Classalloc(ClassRef(node)))
           if !escapes(escapeMap, name) =>
         val struct = node.layout.struct
@@ -122,7 +122,7 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
     })
 
     val instructions = buf.toSeq
-    (instructions.head +: replaced) ++ instructions.tail
+    (instructions.head +: stackAllocs) ++ instructions.tail
   }
 }
 

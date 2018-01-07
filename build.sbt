@@ -1,4 +1,7 @@
 import java.io.File.pathSeparator
+
+import sbt.file
+
 import scala.util.Try
 import scalanative.tools.OptimizerReporter
 import scalanative.sbtplugin.ScalaNativePluginInternal._
@@ -471,7 +474,7 @@ lazy val benchmarks =
 
 lazy val inline =
   project
-    .in(file("inline"))
+    .in(file("inlining"))
     .settings(projectSettings)
     .settings(noPublishSettings)
     .settings(

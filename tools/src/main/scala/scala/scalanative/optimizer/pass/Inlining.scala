@@ -8,6 +8,7 @@ import scala.scalanative.nir.Inst._
 import scala.scalanative.nir._
 import scala.scalanative.optimizer.analysis.ClassHierarchy.{Method, _}
 import scala.scalanative.optimizer.analysis.ClassHierarchyExtractors.MethodRef
+import scala.annotation.tailrec
 
 /**
   * Inline pass, inlines constructor calls, as well as method calls
@@ -15,9 +16,9 @@ import scala.scalanative.optimizer.analysis.ClassHierarchyExtractors.MethodRef
   */
 class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
 
-  private val MAX_DEPTH = 2
-  private val INST_THRESH = 64
-  private val MAX_INSTS = 10000
+  private val MAX_DEPTH = 8
+  private val INST_THRESH = 32
+  private val MAX_INSTS = 32768
 
 
   private def inlineCall(local: Val.Local, call: Op.Call, method: Method, buffer: nir.Buffer): Seq[Inst] = {
@@ -85,7 +86,7 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
     * @param buffer       The output buffer
     * @return A new sequence of instructions that could be inlined (worklist)
     */
-  private def inline(currentLevel: Int, currentSize: Int, insts: Seq[Inst], buffer: nir.Buffer): Seq[Inst] = {
+  @tailrec private def inline(currentLevel: Int, currentSize: Int, insts: Seq[Inst], buffer: nir.Buffer): Seq[Inst] = {
 
     val ops = insts.collect {
       case Let(local, op: Op.Call) => (local, op)
