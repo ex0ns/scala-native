@@ -158,6 +158,8 @@ private class UpdateLabel(
         case op: Op.Call => Let(updateLocal(l), op.copy(unwind = unwind))
         case _ => inst
       }
+    case Let(l@Local(_), op@Op.Module(_, Next.None)) if unwind != Next.None =>
+      Let(updateLocal(l), op.copy(unwind = unwind))
     case Let(l@Local(_), op) => Let(updateLocal(l), onOp(op))
     case Label(l@Local(_), params) =>
       Label(updateLocal(l), params.map {
