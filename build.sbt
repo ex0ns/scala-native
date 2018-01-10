@@ -475,9 +475,9 @@ lazy val inline =
     .settings(projectSettings)
     .settings(noPublishSettings)
     .settings(
-      nativeMode := "release",
+      nativeMode := "release"/*,
       nativeOptimizerReporter := OptimizerReporter.toDirectory(
-        crossTarget.value)
+        crossTarget.value)*/
     )
     .enablePlugins(ScalaNativePlugin)
 

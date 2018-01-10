@@ -116,7 +116,16 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
     else inlined
   }
 
+  private def blacklist(method: Method) = {
+    Seq(
+      //"@java.lang.Object::init"
+    ).exists(name => method.name.show.startsWith(name))
+  }
+
   private def shouldInlineMethod(method: Method, currentSize: Int): Boolean = {
+    if (blacklist(method)) {
+      return false
+    }
     if (method.insts.size + currentSize >= MAX_INSTS) return false
     if (method.attrs.isExtern || !method.isStatic)
       return false
