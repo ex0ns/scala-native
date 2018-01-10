@@ -471,7 +471,7 @@ lazy val benchmarks =
 
 lazy val inline =
   project
-    .in(file("inline"))
+    .in(file("inlining"))
     .settings(projectSettings)
     .settings(noPublishSettings)
     .settings(
