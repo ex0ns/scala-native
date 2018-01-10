@@ -16,9 +16,9 @@ import scala.annotation.tailrec
   */
 class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
 
-  private val MAX_DEPTH = 8
-  private val INST_THRESH = 32
-  private val MAX_INSTS = 32768
+  private val MAX_DEPTH = 3
+  private val INST_THRESH = 64
+  private val MAX_INSTS = 2048
 
 
   private def inlineCall(local: Val.Local, call: Op.Call, method: Method, buffer: nir.Buffer): Seq[Inst] = {
@@ -50,7 +50,7 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
     * @param value  ID to look for
     * @return an option containing the Method (if any found)
     */
-  private def resolveMethod(ops: Map[Local, Op], value: Val): Option[Node] = {
+  @tailrec private def resolveMethod(ops: Map[Local, Op], value: Val): Option[Node] = {
     value match {
       case Val.Global(name, _) => top.nodes.get(name)
       case Val.Local(localRef, _) => ops.get(localRef) match {
