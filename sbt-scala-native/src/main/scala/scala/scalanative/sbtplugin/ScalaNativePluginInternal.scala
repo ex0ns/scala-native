@@ -125,7 +125,7 @@ object ScalaNativePluginInternal {
     nativeGC in NativeTest := (nativeGC in Test).value,
     inliningThreshold := 64,
     inliningThreshold in NativeTest := (inliningThreshold in Test).value,
-    maxMethodSize := 10000,
+    maxMethodSize := 2048,
     maxMethodSize in NativeTest := (maxMethodSize in Test).value,
     inliningDepth := 2,
     inliningDepth in NativeTest := (inliningDepth in Test).value,

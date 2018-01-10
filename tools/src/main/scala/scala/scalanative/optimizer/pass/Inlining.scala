@@ -89,7 +89,7 @@ class Inlining(config: tools.Config)(implicit top: Top) extends Pass {
   private def inline(currentLevel: Int, currentSize: Int, insts: Seq[Inst], buffer: nir.Buffer): Seq[Inst] = {
 
     val ops = insts.collect {
-      case Let(local, op: Op.Call) => (local, op)
+      case Let(local, op: Op.Copy) => (local, op)
       case Let(local, op: Op.Method) => (local, op)
     }.toMap
 
