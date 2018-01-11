@@ -25,7 +25,7 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
                         scala.collection.Set[Local]()): Boolean = {
     def escapes0(x: LocalEscape) = {
       val isLooping = visited.intersect(x.dependsOn.toSet).nonEmpty
-      val depsEscape = x.dependsOn.foldLeft(false)((escape, dep) =>
+      def depsEscape = x.dependsOn.foldLeft(false)((escape, dep) =>
         escape || escapes(map, dep, visited + local))
       x.simpleEscape || isLooping || depsEscape
     }
@@ -35,8 +35,10 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
 
 
   private def addParamToMap(map: EscapeMap, param: Local, value: Local) = {
-    map.getOrElseUpdate(param, LocalEscape())
-    map.getOrElseUpdate(value, LocalEscape()).addDep(param)
+    val newLabel = map.getOrElseUpdate(param, LocalEscape())
+    val oldLabel = map.getOrElseUpdate(value, LocalEscape())
+    oldLabel.addDep(param)
+    if(newLabel.simpleEscape) oldLabel.escapes
   }
 
   private def markAsEscaped(map: EscapeMap, v: Local) = map.getOrElseUpdate(v, LocalEscape()).escapes
@@ -51,8 +53,10 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
         escapeMap.update(local, LocalEscape())
 
       case Let(local, Op.Copy(v: Val.Local)) =>
-        escapeMap.getOrElseUpdate(local, LocalEscape())
-        escapeMap.getOrElseUpdate(v.name, LocalEscape()).addDep(local)
+        val newLabel = escapeMap.getOrElseUpdate(local, LocalEscape())
+        val oldLabel = escapeMap.getOrElseUpdate(v.name, LocalEscape())
+        oldLabel.addDep(local)
+        if(newLabel.simpleEscape) oldLabel.escapes
 
       case Jump(Next.Label(name, args)) =>
         labels.find(l => l.name == name) match {
