@@ -19,20 +19,28 @@ class EscapeAnalysis(config: tools.Config)(implicit top: Top) extends Pass {
 
   private type EscapeMap = mutable.Map[Local, LocalEscape]
 
-  private def escapes(map: EscapeMap,
-                      local: Local,
-                      visited: scala.collection.Set[Local] =
-                        scala.collection.Set[Local]()): Boolean = {
-    def escapes0(x: LocalEscape) = {
-      val isLooping = visited.intersect(x.dependsOn.toSet).nonEmpty
-      val depsEscape = x.dependsOn.foldLeft(false)((escape, dep) =>
-        escape || escapes(map, dep, visited + local))
-      x.simpleEscape || isLooping || depsEscape
+  private def escapes(map: EscapeMap, local: Local) : Boolean = {
+    val toVisit = mutable.Stack[Local]()
+    val visited = mutable.Stack[Local]()
+
+    toVisit.push(local)
+
+    while(toVisit.nonEmpty) {
+      val current = toVisit.pop()
+      visited.push(current)
+      map.get(current) match {
+        case Some(state) =>
+          if(state.simpleEscape) return true
+          if(visited.toSet.intersect(state.dependsOn.toSet).nonEmpty) return true
+
+          if(state.dependsOn.isEmpty) visited.pop()
+          toVisit.pushAll(state.dependsOn)
+
+        case _ => visited.pop()
+      }
     }
-
-    map.get(local).fold(false)(escapes0)
+    false
   }
-
 
   private def addParamToMap(map: EscapeMap, param: Local, value: Local) = {
     map.getOrElseUpdate(param, LocalEscape())
